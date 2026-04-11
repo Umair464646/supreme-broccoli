@@ -1,0 +1,12 @@
+# Crypto Strategy Lab V9 Feature Lab
+
+Desktop build with:
+- optimized large-dataset loading
+- disk-cached timeframes
+- chart workspace
+- Feature Lab with real feature generation
+- exportable feature datasets
+
+## Run
+pip install -r requirements.txt
+python main.py
