@@ -152,6 +152,78 @@ FEATURE_BUILDERS = {
     "CANDLE_RATIOS": add_candle_ratio_features,
 }
 
+
+def add_vwap_features(df: pd.DataFrame) -> list[str]:
+    if "vwap" in df.columns and df["vwap"].notna().any():
+        vwap = df["vwap"]
+    elif "quote_volume" in df.columns:
+        vwap = (df["quote_volume"].fillna(0).cumsum() / df["volume"].replace(0, np.nan).cumsum()).ffill()
+    else:
+        tp = (df["high"] + df["low"] + df["close"]) / 3.0
+        vwap = ((tp * df["volume"].fillna(0)).cumsum() / df["volume"].replace(0, np.nan).cumsum()).ffill()
+    df["vwap_auto"] = vwap
+    df["close_to_vwap"] = (df["close"] - vwap) / vwap.replace(0, np.nan)
+    return ["vwap_auto", "close_to_vwap"]
+
+
+def add_momentum_features(df: pd.DataFrame) -> list[str]:
+    df["mom_3"] = df["close"].pct_change(3)
+    df["mom_10"] = df["close"].pct_change(10)
+    df["roc_20"] = ((df["close"] / df["close"].shift(20)) - 1.0) * 100.0
+    return ["mom_3", "mom_10", "roc_20"]
+
+
+def add_orderflow_features(df: pd.DataFrame) -> list[str]:
+    cols = []
+    if "buy_volume" in df.columns and "sell_volume" in df.columns:
+        total = (df["buy_volume"] + df["sell_volume"]).replace(0, np.nan)
+        df["buy_sell_imbalance_of"] = (df["buy_volume"] - df["sell_volume"]) / total
+        cols.append("buy_sell_imbalance_of")
+    if "buy_sell_vol_delta" in df.columns:
+        df["buy_sell_vol_delta_z"] = (
+            (df["buy_sell_vol_delta"] - df["buy_sell_vol_delta"].rolling(100).mean()) /
+            df["buy_sell_vol_delta"].rolling(100).std().replace(0, np.nan)
+        )
+        cols.append("buy_sell_vol_delta_z")
+    return cols
+
+
+def add_zscore_features(df: pd.DataFrame) -> list[str]:
+    ma = df["close"].rolling(50).mean()
+    sd = df["close"].rolling(50).std().replace(0, np.nan)
+    df["close_z_50"] = (df["close"] - ma) / sd
+    vma = df["volume"].rolling(50).mean()
+    vsd = df["volume"].rolling(50).std().replace(0, np.nan)
+    df["volume_z_50"] = (df["volume"] - vma) / vsd
+    return ["close_z_50", "volume_z_50"]
+
+
+def add_donchian_features(df: pd.DataFrame) -> list[str]:
+    df["donchian_high_20"] = df["high"].rolling(20).max()
+    df["donchian_low_20"] = df["low"].rolling(20).min()
+    df["donchian_mid_20"] = (df["donchian_high_20"] + df["donchian_low_20"]) / 2.0
+    return ["donchian_high_20", "donchian_low_20", "donchian_mid_20"]
+
+
+def add_stochastic_features(df: pd.DataFrame) -> list[str]:
+    low14 = df["low"].rolling(14).min()
+    high14 = df["high"].rolling(14).max()
+    k = ((df["close"] - low14) / (high14 - low14).replace(0, np.nan)) * 100.0
+    d = k.rolling(3).mean()
+    df["stoch_k_14"] = k
+    df["stoch_d_3"] = d
+    return ["stoch_k_14", "stoch_d_3"]
+
+
+FEATURE_BUILDERS.update({
+    "VWAP": add_vwap_features,
+    "MOMENTUM": add_momentum_features,
+    "ORDER_FLOW": add_orderflow_features,
+    "ZSCORE": add_zscore_features,
+    "DONCHIAN": add_donchian_features,
+    "STOCHASTIC": add_stochastic_features,
+})
+
 def generate_features(df: pd.DataFrame, selected_features: list[str]):
     out = ensure_sorted(df.copy())
     generated_cols: list[str] = []
