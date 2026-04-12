@@ -42,7 +42,7 @@ Settings:
 - **Population**: top candidates kept per generation sweep
 - **Generations**: number of evolution rounds
 - **Feature toggles**: indicator/feature groups used in auto feature engineering
-  - Includes expanded groups: VWAP, Momentum, Order Flow, Z-Score, Donchian, Stochastic
+  - Includes expanded groups: VWAP, Momentum, Order Flow, Z-Score, Donchian, Stochastic, Keltner, ADX, CCI, Williams %R, OBV, CMF, Ichimoku
 
 ---
 

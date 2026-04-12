@@ -12,7 +12,7 @@ Desktop build with:
 - AI Lab with regime classification, setup confidence scoring, and training curves
 - AI Lab automated Start pipeline (profile -> features -> evolution -> validation -> AI -> TradingView package)
 - AI Lab Live Monitor window for real-time candidate testing and evolution visibility
-- Expanded indicator set (VWAP, Momentum, Order Flow, Z-Score, Donchian, Stochastic)
+- Expanded indicator set (VWAP, Momentum, Order Flow, Z-Score, Donchian, Stochastic, Keltner, ADX, CCI, Williams %R, OBV, CMF, Ichimoku)
 
 ## Run
 pip install -r requirements.txt

@@ -43,6 +43,13 @@ FEATURE_OPTIONS = [
     "ZSCORE",
     "DONCHIAN",
     "STOCHASTIC",
+    "KELTNER",
+    "ADX",
+    "CCI",
+    "WILLIAMS_R",
+    "OBV",
+    "CMF",
+    "ICHIMOKU",
 ]
 
 

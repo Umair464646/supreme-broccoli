@@ -215,6 +215,73 @@ def add_stochastic_features(df: pd.DataFrame) -> list[str]:
     return ["stoch_k_14", "stoch_d_3"]
 
 
+def add_keltner_features(df: pd.DataFrame) -> list[str]:
+    ema20 = df["close"].ewm(span=20, adjust=False).mean()
+    tr, atr = compute_atr(df["high"], df["low"], df["close"], 20)
+    df["keltner_mid_20"] = ema20
+    df["keltner_upper_20"] = ema20 + 2.0 * atr
+    df["keltner_lower_20"] = ema20 - 2.0 * atr
+    return ["keltner_mid_20", "keltner_upper_20", "keltner_lower_20"]
+
+
+def add_adx_features(df: pd.DataFrame) -> list[str]:
+    high, low, close = df["high"], df["low"], df["close"]
+    plus_dm = (high.diff()).clip(lower=0)
+    minus_dm = (-low.diff()).clip(lower=0)
+    plus_dm[plus_dm < minus_dm] = 0
+    minus_dm[minus_dm < plus_dm] = 0
+    tr, atr = compute_atr(high, low, close, 14)
+    plus_di = 100 * (plus_dm.ewm(alpha=1/14, adjust=False).mean() / atr.replace(0, np.nan))
+    minus_di = 100 * (minus_dm.ewm(alpha=1/14, adjust=False).mean() / atr.replace(0, np.nan))
+    dx = (100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan))
+    adx = dx.ewm(alpha=1/14, adjust=False).mean()
+    df["plus_di_14"] = plus_di
+    df["minus_di_14"] = minus_di
+    df["adx_14"] = adx
+    return ["plus_di_14", "minus_di_14", "adx_14"]
+
+
+def add_cci_features(df: pd.DataFrame) -> list[str]:
+    tp = (df["high"] + df["low"] + df["close"]) / 3.0
+    ma = tp.rolling(20).mean()
+    md = (tp - ma).abs().rolling(20).mean().replace(0, np.nan)
+    df["cci_20"] = (tp - ma) / (0.015 * md)
+    return ["cci_20"]
+
+
+def add_williams_r_features(df: pd.DataFrame) -> list[str]:
+    hh = df["high"].rolling(14).max()
+    ll = df["low"].rolling(14).min()
+    df["williams_r_14"] = -100 * ((hh - df["close"]) / (hh - ll).replace(0, np.nan))
+    return ["williams_r_14"]
+
+
+def add_obv_features(df: pd.DataFrame) -> list[str]:
+    direction = np.sign(df["close"].diff().fillna(0))
+    df["obv"] = (direction * df["volume"]).cumsum()
+    df["obv_ema_20"] = df["obv"].ewm(span=20, adjust=False).mean()
+    return ["obv", "obv_ema_20"]
+
+
+def add_cmf_features(df: pd.DataFrame) -> list[str]:
+    mfm = ((df["close"] - df["low"]) - (df["high"] - df["close"])) / (df["high"] - df["low"]).replace(0, np.nan)
+    mfv = mfm * df["volume"]
+    df["cmf_20"] = mfv.rolling(20).sum() / df["volume"].rolling(20).sum().replace(0, np.nan)
+    return ["cmf_20"]
+
+
+def add_ichimoku_features(df: pd.DataFrame) -> list[str]:
+    conv = (df["high"].rolling(9).max() + df["low"].rolling(9).min()) / 2.0
+    base = (df["high"].rolling(26).max() + df["low"].rolling(26).min()) / 2.0
+    span_a = ((conv + base) / 2.0).shift(26)
+    span_b = ((df["high"].rolling(52).max() + df["low"].rolling(52).min()) / 2.0).shift(26)
+    df["ichimoku_conv_9"] = conv
+    df["ichimoku_base_26"] = base
+    df["ichimoku_span_a"] = span_a
+    df["ichimoku_span_b"] = span_b
+    return ["ichimoku_conv_9", "ichimoku_base_26", "ichimoku_span_a", "ichimoku_span_b"]
+
+
 FEATURE_BUILDERS.update({
     "VWAP": add_vwap_features,
     "MOMENTUM": add_momentum_features,
@@ -222,6 +289,13 @@ FEATURE_BUILDERS.update({
     "ZSCORE": add_zscore_features,
     "DONCHIAN": add_donchian_features,
     "STOCHASTIC": add_stochastic_features,
+    "KELTNER": add_keltner_features,
+    "ADX": add_adx_features,
+    "CCI": add_cci_features,
+    "WILLIAMS_R": add_williams_r_features,
+    "OBV": add_obv_features,
+    "CMF": add_cmf_features,
+    "ICHIMOKU": add_ichimoku_features,
 })
 
 def generate_features(df: pd.DataFrame, selected_features: list[str]):
