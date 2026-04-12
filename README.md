@@ -1,21 +1,22 @@
 # Crypto Strategy Lab
 
-Crypto Strategy Lab is now launched through a **PySide6 + QML (Qt Quick Controls 2)** shell focused on a premium desktop workspace layout.
+Crypto Strategy Lab runs with a **PySide6 + QML** front end and Python backend engines.
 
-## UI Architecture (QML-first)
-- Left navigation rail (Home, Data, Strategy, Evolution, Neural, Backtest, Results, Export)
-- Top command bar (project, dataset, timeframe, Start/Pause/Stop, model state)
+## Current QML execution flow (real, non-demo)
+The QML shell now drives actual backend processing via `AppState` + `ResearchWorker`:
+1. Load real CSV/Parquet dataset from the dataset path field.
+2. Build real features using `generate_features`.
+3. Run real strategy evolution via `evolve_templates`.
+4. Run walk-forward validation via `walk_forward_validate`.
+5. Run AI analysis via `analyze_market_ai`.
+6. Stream real strategy rows, logs, stage text, and AI curves to QML.
+
+## UI Architecture
+- Left navigation rail
+- Top command bar (dataset path + Start/Pause/Stop + stage/model status)
 - Main tab workspace (Overview, Strategies, Evolution, Neural, Results)
-- Right inspector panel (selected strategy details + copy action)
+- Right inspector panel (selected strategy details + copy)
 - Bottom collapsible log console
-
-## Included Reusable QML Components
-- `NavigationRail`
-- `TopBar`
-- `StrategyItem`
-- `ChartPanel`
-- `InspectorPanel`
-- `LogConsole`
 
 ## Run
 ```bash
@@ -23,6 +24,6 @@ pip install -r requirements.txt
 python main.py
 ```
 
-## Notes
-- The QML UI is designed to be responsive, scrollable, and visually clean.
-- Real-time demo activity is powered by `AppState` (`app/ui/qml_app.py`) so charts, strategy feed, and logs update live.
+## Important
+- No random strategy/timer simulation is used in the active QML flow.
+- If no valid dataset path is set, start will fail with an explicit log error.
