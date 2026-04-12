@@ -30,7 +30,7 @@ class AutoResearchWorker(QObject):
     timeline = pyqtSignal(str, int, str)  # stage_name, percent, note
     generation = pyqtSignal(int, int, float, int)  # gen, survivors, best_fitness, population
     candidate_test = pyqtSignal(int, int, int, str)  # gen, done, total, family
-    ai_epoch = pyqtSignal(int, int, float, float)
+    ai_epoch = pyqtSignal(int, int, float, float, object)
     finished = pyqtSignal(object)
     error = pyqtSignal(str)
 
@@ -178,7 +178,7 @@ class AutoResearchWorker(QObject):
             ai_result = analyze_market_ai(
                 ai_df,
                 model_type=self.config.model_type,
-                epoch_cb=lambda e, total, loss, acc: self.ai_epoch.emit(e, total, loss, acc),
+                epoch_cb=lambda e, total, loss, acc, extra=None: self.ai_epoch.emit(e, total, loss, acc, extra or {}),
             )
             self.timeline.emit("AI analysis", 100, "AI outputs ready")
 

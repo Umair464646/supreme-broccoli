@@ -500,9 +500,9 @@ class AILabPage(QWidget):
             self.nn_window.set_architecture(result.nn_architecture)
             self.nn_window.on_finished()
 
-    def _on_ai_epoch(self, epoch: int, total: int, loss: float, acc: float):
+    def _on_ai_epoch(self, epoch: int, total: int, loss: float, acc: float, extra: dict | None = None):
         if self.nn_window is not None:
-            self.nn_window.on_epoch(epoch, total, loss, acc)
+            self.nn_window.on_epoch(epoch, total, loss, acc, extra=extra or {})
 
     def _on_pipeline_error(self, text: str):
         self._set_buttons_running(False)
