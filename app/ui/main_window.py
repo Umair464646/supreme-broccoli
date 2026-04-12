@@ -138,11 +138,11 @@ class MainWindow(QMainWindow):
         self.data_page.log_message.connect(self.log_panel.append)
 
         self.chart_page.timeframe_requested.connect(self.build_timeframe_async)
-        self.feature_page.timeframe_requested.connect(self.build_timeframe_async)
-        self.feature_page.log_message.connect(self.log_panel.append)
-	
-	self.backtest_page.timeframe_requested.connect(self.build_timeframe_async)
-	self.backtest_page.log_message.connect(self.log_panel.append)
+	    self.feature_page.timeframe_requested.connect(self.build_timeframe_async)
+	    self.feature_page.log_message.connect(self.log_panel.append)
+
+	    self.backtest_page.timeframe_requested.connect(self.build_timeframe_async)
+	    self.backtest_page.log_message.connect(self.log_panel.append)
 
     def _build_menu(self):
         menubar = self.menuBar()
@@ -169,7 +169,7 @@ class MainWindow(QMainWindow):
 
         self.chart_page.set_base_dataset(df)
         self.feature_page.set_source_context(self.source_path, self.tf_cache)
-	self.backtest_page.set_source_context(self.source_path, self.tf_cache)
+	    self.backtest_page.set_source_context(self.source_path, self.tf_cache)
         self.ai_page.set_dataframe(df)
 
         self.log_panel.append(
@@ -241,7 +241,7 @@ class MainWindow(QMainWindow):
         self.tf_cache[timeframe] = df
         self.chart_page.set_timeframe_dataset(timeframe, df)
         self.feature_page.set_timeframe_dataset(timeframe, df)
-	self.backtest_page.set_timeframe_dataset(timeframe, df)
+	    self.backtest_page.set_timeframe_dataset(timeframe, df)
 
         self.data_page.progress.setValue(100)
         self.data_page.stage_label.setText(f"Stage: timeframe ready [{timeframe}]")
