@@ -21,9 +21,11 @@ class AIAnalysisResult:
     summary: dict
     regime_counts: dict[str, int]
     confidence_distribution: dict[str, int]
+    prediction_distribution: dict[str, int]
     top_setups: pd.DataFrame
     loss_curve: list[float]
     accuracy_curve: list[float]
+    model_notes: str
 
 
 def _require_columns(df: pd.DataFrame, cols: list[str]) -> None:
@@ -170,6 +172,17 @@ def analyze_market_ai(df: pd.DataFrame) -> AIAnalysisResult:
     confidence_distribution = (
         confidence_bins.value_counts().reindex(["low", "moderate", "high", "very_high"], fill_value=0).astype(int).to_dict()
     )
+    pred_bins = pd.cut(
+        local["setup_probability"],
+        bins=[-0.001, 0.2, 0.4, 0.6, 0.8, 1.0],
+        labels=["0-0.2", "0.2-0.4", "0.4-0.6", "0.6-0.8", "0.8-1.0"],
+    )
+    prediction_distribution = (
+        pred_bins.value_counts()
+        .reindex(["0-0.2", "0.2-0.4", "0.4-0.6", "0.6-0.8", "0.8-1.0"], fill_value=0)
+        .astype(int)
+        .to_dict()
+    )
 
     top = local[[
         "timestamp",
@@ -196,7 +209,13 @@ def analyze_market_ai(df: pd.DataFrame) -> AIAnalysisResult:
         summary=summary,
         regime_counts=regime_counts,
         confidence_distribution=confidence_distribution,
+        prediction_distribution=prediction_distribution,
         top_setups=top,
         loss_curve=losses,
         accuracy_curve=accuracies,
+        model_notes=(
+            "Setup model: logistic classifier on engineered OHLCV features.\\n"
+            "Inputs: ret_1, log_ret_1, vol_30, trend_strength, compression_ratio, volume_z, synthetic.\\n"
+            "Objective: predict next-bar direction probability with transparent confidence."
+        ),
     )

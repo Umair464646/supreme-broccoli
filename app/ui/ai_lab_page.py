@@ -75,6 +75,11 @@ class AILabPage(QWidget):
 
         self.conf_table = QTableWidget(0, 2)
         self.conf_table.setHorizontalHeaderLabels(["Confidence Band", "Rows"])
+        self.pred_table = QTableWidget(0, 2)
+        self.pred_table.setHorizontalHeaderLabels(["Prediction Bin", "Rows"])
+        self.model_notes = QTextEdit()
+        self.model_notes.setReadOnly(True)
+        self.model_notes.setMinimumHeight(90)
 
         self.setups_table = QTableWidget(0, 6)
         self.setups_table.setHorizontalHeaderLabels(
@@ -97,6 +102,8 @@ class AILabPage(QWidget):
         left_layout.addWidget(self.regime_table)
         left_layout.addWidget(QLabel("Confidence Distribution"))
         left_layout.addWidget(self.conf_table)
+        left_layout.addWidget(QLabel("Prediction Distribution"))
+        left_layout.addWidget(self.pred_table)
 
         right = QWidget()
         right_layout = QVBoxLayout(right)
@@ -121,6 +128,7 @@ class AILabPage(QWidget):
         layout.addWidget(self.stage_label)
         layout.addWidget(self.progress)
         layout.addWidget(self.summary)
+        layout.addWidget(self.model_notes)
         layout.addWidget(metrics_split, 1)
         layout.addWidget(plot_split, 1)
 
@@ -187,6 +195,7 @@ class AILabPage(QWidget):
 
         self.regime_table.setRowCount(0)
         self.conf_table.setRowCount(0)
+        self.pred_table.setRowCount(0)
         self.setups_table.setRowCount(0)
         self.loss_plot.clear()
         self.acc_plot.clear()
@@ -216,8 +225,10 @@ class AILabPage(QWidget):
 
         self._populate_two_col_table(self.regime_table, result.regime_counts)
         self._populate_two_col_table(self.conf_table, result.confidence_distribution)
+        self._populate_two_col_table(self.pred_table, result.prediction_distribution)
         self._populate_setups(result.top_setups)
         self._plot_curves(result.loss_curve, result.accuracy_curve)
+        self.model_notes.setPlainText(result.model_notes)
         self._refresh_summary()
 
         self.log_message.emit(

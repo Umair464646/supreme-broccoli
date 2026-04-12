@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import pandas as pd
+import numpy as np
 
 from app.core.backtest_engine import BacktestConfig, run_backtest
 
@@ -91,14 +92,19 @@ def _ensure_vwap(local: pd.DataFrame) -> pd.DataFrame:
     return local
 
 
-def build_strategy_dataframe(df: pd.DataFrame, template_key: str) -> pd.DataFrame:
+def build_strategy_dataframe(df: pd.DataFrame, template_key: str, params: dict[str, Any] | None = None) -> pd.DataFrame:
     local = df.copy()
     local = local.sort_values("timestamp").reset_index(drop=True)
     _require_columns(local, ["timestamp", "open", "high", "low", "close", "volume"], template_key)
+    p = params or {}
 
     if template_key == "ema_cross_20_50":
-        local["ema_fast"] = local["close"].ewm(span=20, adjust=False).mean()
-        local["ema_slow"] = local["close"].ewm(span=50, adjust=False).mean()
+        fast = int(p.get("ema_fast", 20))
+        slow = int(p.get("ema_slow", 50))
+        if fast <= 1 or slow <= 2 or fast >= slow:
+            raise ValueError("EMA parameters invalid; require 1 < ema_fast < ema_slow")
+        local["ema_fast"] = local["close"].ewm(span=fast, adjust=False).mean()
+        local["ema_slow"] = local["close"].ewm(span=slow, adjust=False).mean()
         local["long_entry"] = (local["ema_fast"] > local["ema_slow"]) & (
             local["ema_fast"].shift(1) <= local["ema_slow"].shift(1)
         )
@@ -107,37 +113,49 @@ def build_strategy_dataframe(df: pd.DataFrame, template_key: str) -> pd.DataFram
         )
 
     elif template_key == "rsi_reversal_30_70":
+        rsi_len = int(p.get("rsi_len", 14))
+        oversold = float(p.get("oversold", 30))
+        overbought = float(p.get("overbought", 70))
+        if rsi_len < 2 or not (1 <= oversold < overbought <= 99):
+            raise ValueError("RSI parameters invalid")
         delta = local["close"].diff()
         gain = delta.clip(lower=0)
         loss = -delta.clip(upper=0)
-        avg_gain = gain.rolling(14).mean()
-        avg_loss = loss.rolling(14).mean().replace(0, pd.NA)
+        avg_gain = gain.rolling(rsi_len).mean()
+        avg_loss = loss.rolling(rsi_len).mean().replace(0, pd.NA)
         rs = avg_gain / avg_loss
         local["rsi"] = 100 - (100 / (1 + rs))
-        local["long_entry"] = (local["rsi"] > 30) & (local["rsi"].shift(1) <= 30)
-        local["short_entry"] = (local["rsi"] < 70) & (local["rsi"].shift(1) >= 70)
+        local["long_entry"] = (local["rsi"] > oversold) & (local["rsi"].shift(1) <= oversold)
+        local["short_entry"] = (local["rsi"] < overbought) & (local["rsi"].shift(1) >= overbought)
 
     elif template_key == "breakout_20":
-        local["rolling_high_20"] = local["high"].rolling(20).max().shift(1)
-        local["rolling_low_20"] = local["low"].rolling(20).min().shift(1)
-        local["long_entry"] = local["close"] > local["rolling_high_20"]
-        local["short_entry"] = local["close"] < local["rolling_low_20"]
+        lookback = int(p.get("lookback", 20))
+        if lookback < 2:
+            raise ValueError("Breakout lookback invalid")
+        local["rolling_high_n"] = local["high"].rolling(lookback).max().shift(1)
+        local["rolling_low_n"] = local["low"].rolling(lookback).min().shift(1)
+        local["long_entry"] = local["close"] > local["rolling_high_n"]
+        local["short_entry"] = local["close"] < local["rolling_low_n"]
 
     elif template_key == "vwap_reclaim":
+        ema_len = int(p.get("ema_len", 34))
+        vol_spike_mult = float(p.get("vol_spike_mult", 1.5))
+        if ema_len < 2 or vol_spike_mult <= 0:
+            raise ValueError("VWAP reclaim parameters invalid")
         local = _ensure_vwap(local)
-        local["ema_34"] = local["close"].ewm(span=34, adjust=False).mean()
+        local["ema_n"] = local["close"].ewm(span=ema_len, adjust=False).mean()
         vol_mean = local["volume"].rolling(50).mean()
-        local["volume_spike"] = local["volume"] > (vol_mean * 1.5)
+        local["volume_spike"] = local["volume"] > (vol_mean * vol_spike_mult)
         local["long_entry"] = (
             (local["close"] > local["vwap"]) &
             (local["close"].shift(1) <= local["vwap"].shift(1)) &
-            (local["close"] > local["ema_34"]) &
+            (local["close"] > local["ema_n"]) &
             local["volume_spike"]
         )
         local["short_entry"] = (
             (local["close"] < local["vwap"]) &
             (local["close"].shift(1) >= local["vwap"].shift(1)) &
-            (local["close"] < local["ema_34"]) &
+            (local["close"] < local["ema_n"]) &
             local["volume_spike"]
         )
 
@@ -169,12 +187,13 @@ def _robustness_score(train_metrics: dict, test_metrics: dict) -> float:
 def evaluate_template(
     df: pd.DataFrame,
     template_key: str,
+    params: dict[str, Any] | None = None,
     config: BacktestConfig | None = None,
 ) -> dict:
     if df is None or df.empty:
         raise ValueError("Dataset is empty")
 
-    staged = build_strategy_dataframe(df, template_key)
+    staged = build_strategy_dataframe(df, template_key, params=params)
     n = len(staged)
     split = max(200, int(n * 0.7))
     split = min(split, n - 50)
@@ -191,10 +210,14 @@ def evaluate_template(
     test_result = run_backtest(test_df, cfg)
 
     template = _template_by_key(template_key)
+    merged_params = dict(template.params)
+    if params:
+        merged_params.update(params)
     robustness = _robustness_score(train_result.metrics, test_result.metrics)
 
     return {
         "template": template,
+        "params": merged_params,
         "full": full_result,
         "train": train_result,
         "test": test_result,
@@ -205,13 +228,14 @@ def evaluate_template(
 def walk_forward_validate(
     df: pd.DataFrame,
     template_key: str,
+    params: dict[str, Any] | None = None,
     config: BacktestConfig | None = None,
     folds: int = 4,
 ) -> tuple[pd.DataFrame, float]:
     if df is None or df.empty:
         raise ValueError("Dataset is empty")
 
-    staged = build_strategy_dataframe(df, template_key)
+    staged = build_strategy_dataframe(df, template_key, params=params)
     cfg = config or BacktestConfig()
 
     fold_size = max(100, len(staged) // (folds + 1))
@@ -248,3 +272,86 @@ def walk_forward_validate(
     stability = round(max(0.0, min(100.0, stability)), 2)
 
     return frame, stability
+
+
+def _variant_param_grid(template_key: str, base_params: dict[str, Any]) -> list[dict[str, Any]]:
+    variants: list[dict[str, Any]] = []
+    if template_key == "ema_cross_20_50":
+        for fast in [10, 14, 20, 24]:
+            for slow in [40, 50, 80]:
+                if fast < slow:
+                    variants.append({"ema_fast": fast, "ema_slow": slow})
+    elif template_key == "rsi_reversal_30_70":
+        for rsi_len in [7, 14, 21]:
+            for oversold, overbought in [(25, 75), (30, 70), (35, 65)]:
+                variants.append({"rsi_len": rsi_len, "oversold": oversold, "overbought": overbought})
+    elif template_key == "breakout_20":
+        for lookback in [10, 20, 30, 55]:
+            variants.append({"lookback": lookback})
+    elif template_key == "vwap_reclaim":
+        for ema_len in [21, 34, 55]:
+            for vsm in [1.2, 1.5, 2.0]:
+                variants.append({"ema_len": ema_len, "vol_spike_mult": vsm})
+    else:
+        variants.append(base_params)
+    return variants or [base_params]
+
+
+def evolve_templates(
+    df: pd.DataFrame,
+    config: BacktestConfig | None = None,
+    top_k: int = 8,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    cfg = config or BacktestConfig()
+    all_rows: list[dict[str, Any]] = []
+
+    for t in TEMPLATES:
+        for params in _variant_param_grid(t.key, t.params):
+            try:
+                evaluated = evaluate_template(df, t.key, params=params, config=cfg)
+                test = evaluated["test"].metrics
+                all_rows.append(
+                    {
+                        "strategy": t.name,
+                        "template_key": t.key,
+                        "params": evaluated["params"],
+                        "robustness_score": float(evaluated["robustness_score"]),
+                        "test_return_pct": float(test["total_return_pct"]),
+                        "test_win_rate_pct": float(test["win_rate_pct"]),
+                        "test_max_drawdown_pct": float(test["max_drawdown_pct"]),
+                        "test_trades": int(test["total_trades"]),
+                    }
+                )
+            except Exception:
+                continue
+
+    if not all_rows:
+        raise ValueError("Evolution engine could not evaluate any template variants")
+
+    frame = pd.DataFrame(all_rows)
+    frame["fitness"] = (
+        frame["robustness_score"] * 0.50 +
+        frame["test_return_pct"] * 0.30 +
+        frame["test_win_rate_pct"] * 0.10 -
+        frame["test_max_drawdown_pct"].abs() * 0.10
+    )
+    frame = frame.sort_values("fitness", ascending=False).reset_index(drop=True)
+    top = frame.head(max(1, int(top_k))).reset_index(drop=True)
+    return frame, top
+
+
+def tradingview_strategy_text(template_key: str, params: dict[str, Any]) -> str:
+    template = _template_by_key(template_key)
+    p = ", ".join(f"{k}={v}" for k, v in params.items())
+    return (
+        f"Strategy: {template.name}\n"
+        f"Template Key: {template_key}\n"
+        f"Parameters: {p}\n"
+        f"Entry Logic: {template.entry_logic}\n"
+        f"Exit Logic: {template.exit_logic}\n"
+        f"Filters: {template.filters}\n"
+        "Replicable TradingView Notes:\n"
+        "- Use identical indicator lengths/thresholds in Pine.\n"
+        "- Keep next-bar execution assumptions aligned with backtest settings.\n"
+        "- Disable entries on synthetic/no-trade bars where possible.\n"
+    )
