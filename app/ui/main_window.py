@@ -1,5 +1,4 @@
 from __future__ import annotations
-from app.ui.backtest_lab_page import BacktestLabPage
 
 import sys
 
@@ -21,6 +20,7 @@ from app.core.timeframe_worker import TimeframeWorker
 from app.ui.data_lab_page import DataLabPage
 from app.ui.chart_lab_page import ChartLabPage
 from app.ui.feature_lab_page import FeatureLabPage
+from app.ui.backtest_lab_page import BacktestLabPage
 from app.ui.ai_lab_page import AILabPage
 from app.ui.placeholder_page import PlaceholderPage
 from app.ui.log_panel import LogPanel
@@ -91,7 +91,6 @@ class MainWindow(QMainWindow):
             "Strategy generation comes after the Backtest Engine.",
         )
         self.backtest_page = BacktestLabPage()
-
         self.validation_page = PlaceholderPage(
             "Validation Lab",
             "Forward test, walk-forward, Monte Carlo, and overfit checks come later.",
@@ -138,11 +137,11 @@ class MainWindow(QMainWindow):
         self.data_page.log_message.connect(self.log_panel.append)
 
         self.chart_page.timeframe_requested.connect(self.build_timeframe_async)
-	    self.feature_page.timeframe_requested.connect(self.build_timeframe_async)
-	    self.feature_page.log_message.connect(self.log_panel.append)
+        self.feature_page.timeframe_requested.connect(self.build_timeframe_async)
+        self.feature_page.log_message.connect(self.log_panel.append)
 
-	    self.backtest_page.timeframe_requested.connect(self.build_timeframe_async)
-	    self.backtest_page.log_message.connect(self.log_panel.append)
+        self.backtest_page.timeframe_requested.connect(self.build_timeframe_async)
+        self.backtest_page.log_message.connect(self.log_panel.append)
 
     def _build_menu(self):
         menubar = self.menuBar()
@@ -169,12 +168,12 @@ class MainWindow(QMainWindow):
 
         self.chart_page.set_base_dataset(df)
         self.feature_page.set_source_context(self.source_path, self.tf_cache)
-	    self.backtest_page.set_source_context(self.source_path, self.tf_cache)
+        self.backtest_page.set_source_context(self.source_path, self.tf_cache)
         self.ai_page.set_dataframe(df)
 
         self.log_panel.append(
             "INFO",
-            "Base dataset propagated to Chart Lab, Feature Lab, and AI Lab",
+            "Base dataset propagated to Chart Lab, Feature Lab, Backtest Lab, and AI Lab",
         )
         self.sidebar.setCurrentRow(2)
 
@@ -187,6 +186,7 @@ class MainWindow(QMainWindow):
             self.log_panel.append("INFO", f"Timeframe already cached in memory: {timeframe}")
             self.chart_page.set_timeframe_dataset(timeframe, self.tf_cache[timeframe])
             self.feature_page.set_timeframe_dataset(timeframe, self.tf_cache[timeframe])
+            self.backtest_page.set_timeframe_dataset(timeframe, self.tf_cache[timeframe])
             return
 
         if self.tf_thread is not None:
@@ -205,7 +205,6 @@ class MainWindow(QMainWindow):
         self.tf_target = timeframe
         self.log_panel.append("INFO", f"Requested timeframe build: {timeframe}")
 
-        # Reuse Data Lab progress UI so the user actually sees activity.
         self.data_page.progress.setValue(0)
         self.data_page.stage_label.setText(f"Stage: preparing timeframe {timeframe}")
         self.data_page.load_btn.setEnabled(False)
@@ -241,7 +240,7 @@ class MainWindow(QMainWindow):
         self.tf_cache[timeframe] = df
         self.chart_page.set_timeframe_dataset(timeframe, df)
         self.feature_page.set_timeframe_dataset(timeframe, df)
-	    self.backtest_page.set_timeframe_dataset(timeframe, df)
+        self.backtest_page.set_timeframe_dataset(timeframe, df)
 
         self.data_page.progress.setValue(100)
         self.data_page.stage_label.setText(f"Stage: timeframe ready [{timeframe}]")
@@ -249,7 +248,7 @@ class MainWindow(QMainWindow):
 
         self.log_panel.append(
             "INFO",
-            f"Timeframe propagated to Chart Lab and Feature Lab: {timeframe} ({len(df):,} rows)",
+            f"Timeframe propagated to Chart Lab, Feature Lab, and Backtest Lab: {timeframe} ({len(df):,} rows)",
         )
 
     def _on_timeframe_error(self, text: str):
@@ -267,7 +266,7 @@ class MainWindow(QMainWindow):
         QMessageBox.information(
             self,
             "About Crypto Strategy Lab V9 Feature Lab",
-            "Optimized build with Feature Lab, timeframe cache, and exportable feature generation.",
+            "Optimized build with Feature Lab, timeframe cache, exportable features, and Backtest Lab.",
         )
 
     def _apply_theme(self):
