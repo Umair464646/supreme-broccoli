@@ -182,7 +182,7 @@ class StrategyLabPage(QWidget):
 
         for template in TEMPLATES:
             try:
-                result = evaluate_template(df, template.key, config)
+                result = evaluate_template(df, template.key, config=config)
                 self.latest_results.append(result)
             except Exception as exc:
                 errors.append(f"{template.name}: {exc}")

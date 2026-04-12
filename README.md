@@ -10,6 +10,7 @@ Desktop build with:
 - Backtest Lab with realistic fills/fees/slippage
 - Validation Lab walk-forward stability scoring
 - AI Lab with regime classification, setup confidence scoring, and training curves
+- AI Lab automated Start pipeline (profile -> features -> evolution -> validation -> AI -> TradingView package)
 
 ## Run
 pip install -r requirements.txt
