@@ -27,6 +27,7 @@ Item {
                     Label { text: "Data Lab"; color: "#E2EEFF"; font.pixelSize: 20; font.bold: true }
                     Label { text: "Path: " + (appState.profile.path || "No dataset loaded"); color: "#9BB6D8"; elide: Text.ElideMiddle; width: parent.width }
                     Label { text: "Rows: " + (appState.profile.rows || 0); color: "#9BB6D8" }
+                    Label { text: "Columns: " + ((appState.profile.columns || []).join(", ")); color: "#9BB6D8"; width: parent.width; wrapMode: Text.Wrap }
                     Label { text: "Range: " + (appState.profile.start || "n/a") + " -> " + (appState.profile.end || "n/a"); color: "#9BB6D8"; width: parent.width; elide: Text.ElideRight }
                     Label { text: "Synthetic %: " + Number(appState.profile.synthetic_pct || 0).toFixed(2); color: "#8FD3FF" }
                 }

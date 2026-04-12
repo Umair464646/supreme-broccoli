@@ -201,6 +201,7 @@ class AppState(QObject):
         self._dataset_path = ""
         self._stage_text = "Idle"
         self._profile: dict = {}
+        self._base_df: pd.DataFrame | None = None
 
         self._thread: QThread | None = None
         self._worker: ResearchWorker | None = None
@@ -267,6 +268,22 @@ class AppState(QObject):
         self._dataset_path = dataset_path.strip()
         self.datasetPathChanged.emit()
 
+
+    @Slot()
+    def loadDataset(self):
+        try:
+            if not self._dataset_path:
+                raise ValueError("No dataset selected")
+            df, profile = load_market_file_minimal(self._dataset_path)
+            self._base_df = df
+            self._profile = asdict(profile)
+            self.profileChanged.emit()
+            self._set_stage("Dataset loaded")
+            self._append_log("INFO", f"Dataset loaded: rows={profile.rows:,} cols={len(profile.columns)}")
+            self._append_log("INFO", f"Range: {profile.start} -> {profile.end}")
+        except Exception as exc:
+            self._append_log("ERROR", f"Dataset load failed: {exc}")
+
     @Slot()
     def startResearch(self):
         if self._thread is not None:
@@ -290,6 +307,11 @@ class AppState(QObject):
         self.valLossSeriesChanged.emit()
         self.valAccuracySeriesChanged.emit()
         self.profileChanged.emit()
+
+        if self._base_df is None:
+            self.loadDataset()
+            if self._base_df is None:
+                return
 
         self._model_status = "running"
         self.modelStatusChanged.emit()

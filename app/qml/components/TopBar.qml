@@ -11,6 +11,7 @@ Rectangle {
     implicitHeight: 70
 
     signal startClicked()
+    signal loadClicked()
     signal pauseClicked()
     signal stopClicked()
 
@@ -43,6 +44,7 @@ Rectangle {
         Button { text: "Browse"; onClicked: fileDialog.open() }
         ComboBox { model: ["1m", "5m", "15m", "1h"]; currentIndex: 0; Layout.preferredWidth: 90 }
 
+        Button { text: "Load"; onClicked: { appState.setDatasetPath(datasetPath.text); root.loadClicked() } }
         Button { text: "Start"; onClicked: { appState.setDatasetPath(datasetPath.text); root.startClicked() } }
         Button { text: "Pause"; onClicked: root.pauseClicked() }
         Button { text: "Stop"; onClicked: root.stopClicked() }

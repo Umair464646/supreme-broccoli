@@ -45,6 +45,7 @@ ApplicationWindow {
 
             TopBar {
                 Layout.fillWidth: true
+                onLoadClicked: appState.loadDataset()
                 onStartClicked: appState.startResearch()
                 onPauseClicked: appState.pauseResearch()
                 onStopClicked: appState.stopResearch()
