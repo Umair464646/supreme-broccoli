@@ -13,14 +13,21 @@ Item {
 
         Label { text: "Export Center"; color: "#E2EEFF"; font.pixelSize: 20; font.bold: true }
 
-        TextArea {
+        Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            text: appState.selectedStrategyJson()
-            readOnly: true
-            wrapMode: Text.Wrap
-            color: "#D7E5FA"
-            background: Rectangle { color: "#0F1725"; radius: 12; border.color: "#1B2A41" }
+            radius: 12
+            color: "#0F1725"
+            border.color: "#1B2A41"
+
+            TextArea {
+                anchors.fill: parent
+                anchors.margins: 8
+                text: appState.selectedStrategyJson()
+                readOnly: true
+                wrapMode: Text.Wrap
+                color: "#D7E5FA"
+            }
         }
 
         RowLayout {

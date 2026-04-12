@@ -65,6 +65,7 @@ Rectangle {
                     onExited: parent.hovered = false
                     onClicked: {
                         root.currentIndex = index
+                        appState.logUiEvent("Navigation clicked: " + label)
                         root.indexChanged(index)
                     }
                 }

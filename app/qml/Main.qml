@@ -73,6 +73,7 @@ ApplicationWindow {
                         TabBar {
                             id: tabBar
                             Layout.fillWidth: true
+                            onCurrentIndexChanged: appState.logUiEvent("Tab changed: " + tabBar.currentIndex)
                             background: Rectangle { color: "#0D1523"; radius: 10 }
                             TabButton { text: "Home" }
                             TabButton { text: "Data" }

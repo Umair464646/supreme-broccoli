@@ -20,7 +20,8 @@ Rectangle {
         title: "Select market dataset"
         nameFilters: ["Data files (*.parquet *.pq *.csv)", "All files (*)"]
         onAccepted: {
-            datasetPath.text = selectedFile.toString().replace("file:///", "")
+            datasetPath.text = selectedFile.toString()
+            appState.logUiEvent("File selected from dialog")
             appState.setDatasetPath(datasetPath.text)
         }
     }
@@ -41,13 +42,13 @@ Rectangle {
             onEditingFinished: appState.setDatasetPath(text)
         }
 
-        Button { text: "Browse"; onClicked: fileDialog.open() }
+        Button { text: "Browse"; onClicked: { appState.logUiEvent("Browse clicked"); fileDialog.open() } }
         ComboBox { model: ["1m", "5m", "15m", "1h"]; currentIndex: 0; Layout.preferredWidth: 90 }
 
-        Button { text: "Load"; onClicked: { appState.setDatasetPath(datasetPath.text); root.loadClicked() } }
-        Button { text: "Start"; onClicked: { appState.setDatasetPath(datasetPath.text); root.startClicked() } }
-        Button { text: "Pause"; onClicked: root.pauseClicked() }
-        Button { text: "Stop"; onClicked: root.stopClicked() }
+        Button { text: "Load"; onClicked: { appState.logUiEvent("Load clicked"); appState.setDatasetPath(datasetPath.text); root.loadClicked() } }
+        Button { text: "Start"; onClicked: { appState.logUiEvent("Start clicked"); appState.setDatasetPath(datasetPath.text); root.startClicked() } }
+        Button { text: "Pause"; onClicked: { appState.logUiEvent("Pause clicked"); root.pauseClicked() } }
+        Button { text: "Stop"; onClicked: { appState.logUiEvent("Stop clicked"); root.stopClicked() } }
 
         Rectangle {
             radius: 10

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+from urllib.parse import unquote, urlparse
 from dataclasses import asdict
 from pathlib import Path
 
@@ -277,10 +278,30 @@ class AppState(QObject):
     def chartCandles(self):
         return self._chart_candles
 
+    def _normalize_dataset_path(self, raw: str) -> str:
+        value = (raw or "").strip()
+        if not value:
+            return ""
+        parsed = urlparse(value)
+        if parsed.scheme == "file":
+            path = unquote(parsed.path or "")
+            # Windows file URLs are usually /D:/...
+            if path.startswith("/") and len(path) > 2 and path[2] == ":":
+                path = path[1:]
+            return path
+        return unquote(value)
+
+    @Slot(str)
+    def logUiEvent(self, message: str):
+        self._append_log("UI", message)
+
     @Slot(str)
     def setDatasetPath(self, dataset_path: str):
-        self._dataset_path = dataset_path.strip()
+        normalized = self._normalize_dataset_path(dataset_path)
+        self._dataset_path = normalized
         self.datasetPathChanged.emit()
+        if normalized:
+            self._append_log("UI", f"Dataset path set: {normalized}")
 
 
     @Slot()
@@ -288,22 +309,25 @@ class AppState(QObject):
         try:
             if not self._dataset_path:
                 raise ValueError("No dataset selected")
+            self._append_log("INFO", f"Loading dataset from: {self._dataset_path}")
             df, profile = load_market_file_minimal(self._dataset_path)
             self._base_df = df
             self._profile = asdict(profile)
             self.profileChanged.emit()
             self._refresh_chart_data()
             self._set_stage("Dataset loaded")
-            self._append_log("INFO", f"Dataset loaded: rows={profile.rows:,} cols={len(profile.columns)}")
-            self._append_log("INFO", f"Range: {profile.start} -> {profile.end}")
+            self._append_log("INFO", f"Dataset loaded successfully: rows={profile.rows:,} cols={len(profile.columns)}")
+            self._append_log("INFO", f"Columns: {', '.join(profile.columns)}")
+            self._append_log("INFO", f"Range: {profile.start} -> {profile.end} | synthetic={profile.synthetic_pct:.2f}%")
         except Exception as exc:
-            self._append_log("ERROR", f"Dataset load failed: {exc}")
+            self._append_log("ERROR", f"Dataset load failed: {type(exc).__name__}: {exc}")
 
 
     @Slot(str)
     def setChartTimeframe(self, timeframe: str):
         tf = timeframe if timeframe in {"1s", "1m"} else "1s"
         self._chart_timeframe = tf
+        self._append_log("UI", f"Chart timeframe changed: {tf}")
         self.chartTimeframeChanged.emit()
         self._refresh_chart_data()
 
@@ -319,6 +343,7 @@ class AppState(QObject):
         if self._thread is not None:
             self._append_log("WARN", "Research already running")
             return
+        self._append_log("UI", "Start clicked")
         self._strategies = []
         self._selected_strategy = {}
         self._fitness_series = []
@@ -363,10 +388,12 @@ class AppState(QObject):
 
     @Slot()
     def pauseResearch(self):
+        self._append_log("UI", "Pause clicked")
         self._append_log("WARN", "Pause is not implemented for QML orchestrator yet")
 
     @Slot()
     def stopResearch(self):
+        self._append_log("UI", "Stop clicked")
         if self._worker is not None:
             self._worker.cancel()
         self._append_log("INFO", "Cancellation requested")
@@ -377,6 +404,7 @@ class AppState(QObject):
             if row.get("id") == strategy_id:
                 self._selected_strategy = row
                 self.selectedStrategyChanged.emit()
+                self._append_log("UI", f"Strategy selected: {strategy_id}")
                 return
 
     @Slot()
