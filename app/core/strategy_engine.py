@@ -823,6 +823,7 @@ def evolve_templates(
     max_variants: int = 500,
     exploration_strength: float = 0.0,
     mutation_only_from_seed: bool = False,
+    mutation_bias: dict[str, float] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     cfg = config or BacktestConfig()
     all_rows: list[dict[str, Any]] = []
@@ -862,7 +863,9 @@ def evolve_templates(
             else:
                 tiers = [("minor", 8), ("medium", 8), ("major", 4)]
             for tier, n_mut in tiers:
-                for mp in _mutate_param_variants(key, params, rng=rng, n=n_mut + int(8 * exploration_strength)):
+                bias = float((mutation_bias or {}).get(tier, 1.0))
+                eff_n = max(1, int(round((n_mut + int(8 * exploration_strength)) * max(0.25, bias))))
+                for mp in _mutate_param_variants(key, params, rng=rng, n=eff_n):
                     mt = tier
                     tt = t
                     if tier == "major" and rng.random() < 0.35:
@@ -873,7 +876,8 @@ def evolve_templates(
             # Alternate mutation path: snap around nearby grid variants for broader local exploration.
             grid_opts = _variant_param_grid(t.key, t.params)
             if grid_opts:
-                snap_n = max(1, int(2 + 4 * exploration_strength))
+                snap_bias = float((mutation_bias or {}).get("grid_snap", 1.0))
+                snap_n = max(1, int(round((2 + 4 * exploration_strength) * max(0.25, snap_bias))))
                 snap_idx = np.linspace(0, len(grid_opts) - 1, num=min(snap_n, len(grid_opts)), dtype=int).tolist()
                 for si in snap_idx:
                     gp = dict(grid_opts[si])
