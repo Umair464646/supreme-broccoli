@@ -191,6 +191,7 @@ class AppState(QObject):
     chartWindowChanged = Signal()
     previewRowsChanged = Signal()
     previewColumnsChanged = Signal()
+    featureMetaChanged = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -216,6 +217,11 @@ class AppState(QObject):
         self._chart_window_end = 0
         self._preview_rows: list[dict] = []
         self._preview_columns: list[str] = []
+        self._feature_df: pd.DataFrame | None = None
+        self._feature_columns: list[str] = []
+        self._feature_preview_rows: list[dict] = []
+        self._feature_row_count = 0
+        self._generated_feature_count = 0
 
         self._thread: QThread | None = None
         self._worker: ResearchWorker | None = None
@@ -320,6 +326,22 @@ class AppState(QObject):
     def previewColumns(self):
         return self._preview_columns
 
+    @Property("QVariantList", notify=featureMetaChanged)
+    def featureColumns(self):
+        return self._feature_columns
+
+    @Property("QVariantList", notify=featureMetaChanged)
+    def featurePreviewRows(self):
+        return self._feature_preview_rows
+
+    @Property(int, notify=featureMetaChanged)
+    def featureRowCount(self):
+        return self._feature_row_count
+
+    @Property(int, notify=featureMetaChanged)
+    def generatedFeatureCount(self):
+        return self._generated_feature_count
+
     @Slot(str)
     def setDatasetPath(self, dataset_path: str):
         normalized = self._normalize_dataset_path(dataset_path)
@@ -343,6 +365,12 @@ class AppState(QObject):
             self.previewColumnsChanged.emit()
             self.previewRowsChanged.emit()
             self.profileChanged.emit()
+            self._feature_df = None
+            self._feature_columns = []
+            self._feature_preview_rows = []
+            self._feature_row_count = 0
+            self._generated_feature_count = 0
+            self.featureMetaChanged.emit()
             self._refresh_chart_data()
             self._set_stage("Dataset loaded")
             self._append_log("INFO", f"Dataset loaded successfully: rows={profile.rows:,} cols={len(profile.columns)}")
@@ -354,6 +382,29 @@ class AppState(QObject):
 
 
     @Slot()
+    def generateFeatures(self):
+        try:
+            if self._base_df is None:
+                raise ValueError("Load a dataset before generating features")
+            groups = [
+                "EMA", "SMA", "RSI", "MACD", "ATR", "BOLLINGER",
+                "VOLATILITY", "VOLUME_SPIKE", "BREAKOUT", "CANDLE_RATIOS",
+                "VWAP", "MOMENTUM", "ORDER_FLOW", "ZSCORE",
+            ]
+            self._append_log("INFO", "Generating features from loaded dataset")
+            feature_df, generated_cols = generate_features(self._base_df, groups)
+            self._feature_df = feature_df
+            self._feature_columns = list(feature_df.columns)
+            self._feature_preview_rows = feature_df.head(20).astype(str).to_dict("records")
+            self._feature_row_count = int(len(feature_df))
+            self._generated_feature_count = int(len(generated_cols))
+            self.featureMetaChanged.emit()
+            self._append_log("INFO", f"Features generated: {len(generated_cols)} new columns, rows={len(feature_df):,}")
+            self._append_log("INFO", f"Feature columns: {', '.join(generated_cols[:30])}{' ...' if len(generated_cols) > 30 else ''}")
+        except Exception as exc:
+            self._append_log("ERROR", f"Feature generation failed: {type(exc).__name__}: {exc}")
+
+    @Slot()
     def clearDataset(self):
         self._append_log("UI", "Clear dataset clicked")
         self._base_df = None
@@ -363,8 +414,14 @@ class AppState(QObject):
         self.profileChanged.emit()
         self._preview_rows = []
         self._preview_columns = []
+        self._feature_df = None
+        self._feature_columns = []
+        self._feature_preview_rows = []
+        self._feature_row_count = 0
+        self._generated_feature_count = 0
         self.previewRowsChanged.emit()
         self.previewColumnsChanged.emit()
+        self.featureMetaChanged.emit()
         self._refresh_chart_data()
         self._set_stage("Dataset cleared")
         self._append_log("INFO", "Dataset cleared from shared app state")

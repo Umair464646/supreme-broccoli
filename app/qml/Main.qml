@@ -34,7 +34,7 @@ ApplicationWindow {
             currentIndex: root.navIndex
             onIndexChanged: function(i) {
                 root.navIndex = i
-                var navToTab = [0, 1, 3, 4, 5, 6, 7, 8]
+                var navToTab = [0, 1, 4, 5, 6, 7, 8, 9]
                 var t = navToTab[Math.min(i, navToTab.length - 1)]
                 tabBar.currentIndex = Math.min(t, tabBar.count - 1)
             }
@@ -77,6 +77,7 @@ ApplicationWindow {
                             background: Rectangle { color: "#0D1523"; radius: 10 }
                             TabButton { text: "Home" }
                             TabButton { text: "Data" }
+                            TabButton { text: "Feature" }
                             TabButton { text: "Chart" }
                             TabButton { text: "Strategies" }
                             TabButton { text: "Evolution" }
@@ -92,6 +93,7 @@ ApplicationWindow {
                             currentIndex: tabBar.currentIndex
                             OverviewView {}
                             DataView {}
+                            FeatureView {}
                             ChartView {}
                             StrategyView {}
                             EvolutionView {}
