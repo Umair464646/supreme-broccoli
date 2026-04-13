@@ -651,6 +651,7 @@ def evolve_templates(
     config: BacktestConfig | None = None,
     top_k: int = 8,
     progress_cb=None,
+    result_cb=None,
     seed_pool: list[dict[str, Any]] | None = None,
     max_variants: int = 500,
     exploration_strength: float = 0.0,
@@ -731,22 +732,26 @@ def evolve_templates(
             evaluated = evaluate_template(df, t.key, params=params, config=cfg)
             test = evaluated["test"].metrics
             complexity_score = float(len(t.indicators)) * 1.8 + float(len(params)) * 0.35
-            all_rows.append(
-                {
-                    "strategy": t.name,
-                    "template_key": t.key,
-                    "params": evaluated["params"],
-                    "origin": g.get("origin", "random"),
-                    "mutation_type": g.get("mutation_type", "base"),
-                    "parent_id": g.get("parent_id", "none"),
-                    "complexity_score": complexity_score,
-                    "robustness_score": float(evaluated["robustness_score"]),
-                    "test_return_pct": float(test["total_return_pct"]),
-                    "test_win_rate_pct": float(test["win_rate_pct"]),
-                    "test_max_drawdown_pct": float(test["max_drawdown_pct"]),
-                    "test_trades": int(test["total_trades"]),
-                }
-            )
+            row = {
+                "strategy": t.name,
+                "template_key": t.key,
+                "params": evaluated["params"],
+                "origin": g.get("origin", "random"),
+                "mutation_type": g.get("mutation_type", "base"),
+                "parent_id": g.get("parent_id", "none"),
+                "complexity_score": complexity_score,
+                "robustness_score": float(evaluated["robustness_score"]),
+                "test_return_pct": float(test["total_return_pct"]),
+                "test_win_rate_pct": float(test["win_rate_pct"]),
+                "test_max_drawdown_pct": float(test["max_drawdown_pct"]),
+                "test_trades": int(test["total_trades"]),
+            }
+            all_rows.append(row)
+            if result_cb is not None:
+                try:
+                    result_cb(idx, total, dict(row))
+                except Exception:
+                    pass
         except Exception:
             continue
 

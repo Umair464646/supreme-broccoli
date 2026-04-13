@@ -29,6 +29,12 @@ Rectangle {
             Label { text: "Rob " + row.robustness; color: "#8CE0C9"; font.pixelSize: 12 }
             Label { text: "Val " + row.validation; color: "#EACB95"; font.pixelSize: 12 }
         }
+        RowLayout {
+            Label { text: "Trades " + (row.trade_count || 0); color: "#C8D8EE"; font.pixelSize: 11 }
+            Label { text: "Win " + (row.win_rate || 0) + "%"; color: "#9CD7B7"; font.pixelSize: 11 }
+            Label { text: "PnL " + (row.pnl || 0) + "%"; color: "#A6C9FF"; font.pixelSize: 11 }
+            Label { text: "DD " + (row.drawdown || 0) + "%"; color: "#F2B7B7"; font.pixelSize: 11 }
+        }
     }
 
     MouseArea {

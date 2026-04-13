@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import sys
 from urllib.parse import unquote, urlparse
 from dataclasses import asdict
@@ -81,9 +82,47 @@ class ResearchWorker(QObject):
                     return
                 self.stage.emit(f"Backtest generation {gen}/{self.generations}")
                 self.log.emit("INFO", f"backtest started: generation={gen}")
+                strategy_ids: dict[str, str] = {}
+
+                def _row_to_id(row: dict) -> str:
+                    sig = f"{row.get('template_key','')}|{json.dumps(dict(row.get('params', {})), sort_keys=True)}"
+                    digest = hashlib.md5(sig.encode("utf-8")).hexdigest()[:10]
+                    sid = f"G{gen}-{digest}"
+                    strategy_ids[sig] = sid
+                    return sid
+
+                def _emit_streamed_variant(done: int, total: int, row: dict):
+                    sid = _row_to_id(row)
+                    payload = {
+                        "id": sid,
+                        "generation": gen,
+                        "name": str(row.get("strategy", "n/a")),
+                        "family": str(row.get("template_key", "n/a")),
+                        "origin": str(row.get("origin", "random")),
+                        "fitness": round(float(row.get("fitness", 0.0)), 4),
+                        "robustness": round(float(row.get("robustness_score", 0.0)), 4),
+                        "validation": "pending",
+                        "status": "backtested",
+                        "timeframe": "active",
+                        "entry": str(row.get("entry_logic", "deterministic rules")),
+                        "exit": str(row.get("exit_logic", "risk model")),
+                        "params": dict(row.get("params", {})),
+                        "trade_count": int(row.get("test_trades", 0)),
+                        "win_rate": round(float(row.get("test_win_rate_pct", 0.0)), 2),
+                        "pnl": round(float(row.get("test_return_pct", 0.0)), 4),
+                        "drawdown": round(float(row.get("test_max_drawdown_pct", 0.0)), 4),
+                    }
+                    self.strategy.emit(payload)
+                    self.log.emit(
+                        "INFO",
+                        f"backtest update [{done}/{total}] {payload['id']} trades={payload['trade_count']} "
+                        f"win={payload['win_rate']:.2f}% pnl={payload['pnl']:.2f}% dd={payload['drawdown']:.2f}%"
+                    )
+
                 all_variants, top_variants = evolve_templates(
                     working_df,
                     top_k=self.population_top_k,
+                    result_cb=_emit_streamed_variant,
                     seed_pool=seed_pool,
                     max_variants=180,
                 )
@@ -100,9 +139,11 @@ class ResearchWorker(QObject):
                 )
                 for _, row in all_variants.iterrows():
                     strategy_counter += 1
-                    key_sig = (str(row["template_key"]), str(sorted(dict(row["params"]).items())))
+                    params = dict(row["params"])
+                    key_sig = (str(row["template_key"]), str(sorted(params.items())))
+                    sig = f"{row['template_key']}|{json.dumps(params, sort_keys=True)}"
                     payload = {
-                        "id": f"GEN{gen}-{strategy_counter:04d}",
+                        "id": strategy_ids.get(sig, f"GEN{gen}-{strategy_counter:04d}"),
                         "generation": gen,
                         "name": str(row["strategy"]),
                         "family": str(row["template_key"]),
@@ -114,7 +155,11 @@ class ResearchWorker(QObject):
                         "timeframe": "active",
                         "entry": str(row.get("entry_logic", "deterministic rules")),
                         "exit": str(row.get("exit_logic", "risk model")),
-                        "params": dict(row["params"]),
+                        "params": params,
+                        "trade_count": int(row.get("test_trades", 0)),
+                        "win_rate": round(float(row.get("test_win_rate_pct", 0.0)), 2),
+                        "pnl": round(float(row.get("test_return_pct", 0.0)), 4),
+                        "drawdown": round(float(row.get("test_max_drawdown_pct", 0.0)), 4),
                     }
                     self.strategy.emit(payload)
 
@@ -128,12 +173,48 @@ class ResearchWorker(QObject):
 
             self.stage.emit("Validation")
             self.log.emit("INFO", "validation started")
-            wf, stability = walk_forward_validate(
-                working_df,
-                template_key=str(last_top["template_key"]),
-                params=dict(last_top["params"]),
-                folds=4,
-            )
+            validation_targets = top_variants.head(min(5, len(top_variants)))
+            wf = None
+            stability = 0.0
+            for v_idx, (_, vrow) in enumerate(validation_targets.iterrows(), start=1):
+                if self._cancel:
+                    return
+                params = dict(vrow["params"])
+                self.log.emit("INFO", f"validation running [{v_idx}/{len(validation_targets)}] {vrow['template_key']} params={params}")
+                v_wf, v_stability = walk_forward_validate(
+                    working_df,
+                    template_key=str(vrow["template_key"]),
+                    params=params,
+                    folds=4,
+                )
+                sig = f"{vrow['template_key']}|{json.dumps(params, sort_keys=True)}"
+                strategy_id = f"G{self.generations}-{hashlib.md5(sig.encode('utf-8')).hexdigest()[:10]}"
+                self.strategy.emit({
+                    "id": strategy_id,
+                    "generation": self.generations,
+                    "name": str(vrow["strategy"]),
+                    "family": str(vrow["template_key"]),
+                    "origin": str(vrow.get("origin", "random")),
+                    "fitness": round(float(vrow["fitness"]), 4),
+                    "robustness": round(float(vrow["robustness_score"]), 4),
+                    "validation": round(float(v_stability), 4),
+                    "status": "validated",
+                    "timeframe": "active",
+                    "entry": str(vrow.get("entry_logic", "deterministic rules")),
+                    "exit": str(vrow.get("exit_logic", "risk model")),
+                    "params": params,
+                    "trade_count": int(vrow.get("test_trades", 0)),
+                    "win_rate": round(float(vrow.get("test_win_rate_pct", 0.0)), 2),
+                    "pnl": round(float(vrow.get("test_return_pct", 0.0)), 4),
+                    "drawdown": round(float(vrow.get("test_max_drawdown_pct", 0.0)), 4),
+                })
+                self.log.emit("INFO", f"validation completed [{v_idx}/{len(validation_targets)}] stability={float(v_stability):.2f}")
+                if v_idx == 1:
+                    wf = v_wf
+                    stability = float(v_stability)
+
+            if wf is None:
+                wf = pd.DataFrame()
             self.log.emit("INFO", f"validation completed: walk_forward_stability={stability:.2f}")
 
             self.stage.emit("AI analysis")
@@ -152,6 +233,11 @@ class ResearchWorker(QObject):
                     "confidence": float(extra.get("output_confidence", 0.0)),
                 }
                 self.ai_epoch.emit(payload)
+                self.log.emit(
+                    "INFO",
+                    f"ai epoch {int(epoch)}/{int(total)} loss={float(loss):.4f} acc={float(acc):.4f} "
+                    f"val_loss={float(extra.get('val_loss', loss)):.4f} val_acc={float(extra.get('val_acc', acc)):.4f}"
+                )
 
             ai = analyze_market_ai(working_df, model_type=self.model_type, epoch_cb=_epoch_cb)
             self.log.emit("INFO", "AI analysis completed")
@@ -600,8 +686,18 @@ class AppState(QObject):
     @Slot(object)
     def _on_strategy(self, payload: object):
         row = dict(payload)
-        self._strategies.insert(0, row)
-        self._strategies = self._strategies[:800]
+        row_id = str(row.get("id", ""))
+        replaced = False
+        for i, existing in enumerate(self._strategies):
+            if str(existing.get("id", "")) == row_id and row_id:
+                merged = dict(existing)
+                merged.update(row)
+                self._strategies[i] = merged
+                replaced = True
+                break
+        if not replaced:
+            self._strategies.insert(0, row)
+            self._strategies = self._strategies[:800]
         self.strategiesChanged.emit()
         if not self._selected_strategy:
             self._selected_strategy = row
