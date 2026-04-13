@@ -221,6 +221,7 @@ class ResearchWorker(QObject):
                     result_cb=_emit_streamed_variant,
                     seed_pool=seed_pool,
                     max_variants=180,
+                    exploration_strength=max(0.1, 1.0 - ((gen - 1) / max(1, self.generations - 1))),
                     mutation_only_from_seed=(gen > 1),
                 )
                 if top_variants.empty:
@@ -292,7 +293,8 @@ class ResearchWorker(QObject):
                     self.strategy.emit(payload)
 
                 next_seed_pool = []
-                for _, srow in top_variants.iterrows():
+                mutation_seed_frame = all_variants.head(max(self.population_top_k, self.population_top_k * 2))
+                for _, srow in mutation_seed_frame.iterrows():
                     sparams = dict(srow["params"])
                     sig = f"{srow['template_key']}|{json.dumps(sparams, sort_keys=True)}"
                     next_seed_pool.append(

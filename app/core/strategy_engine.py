@@ -828,9 +828,20 @@ def evolve_templates(
     all_rows: list[dict[str, Any]] = []
     rng = np.random.default_rng(42 + len(df) + top_k)
 
+    base_random_grids = [{"template": t, "params": p, "origin": "random", "mutation_type": "base", "parent_id": "none"} for t in TEMPLATES for p in _variant_param_grid(t.key, t.params)]
     grids = []
     if not (mutation_only_from_seed and seed_pool):
-        grids = [{"template": t, "params": p, "origin": "random", "mutation_type": "base", "parent_id": "none"} for t in TEMPLATES for p in _variant_param_grid(t.key, t.params)]
+        grids = list(base_random_grids)
+    else:
+        inject_n = max(1, int(np.sqrt(max(1, len(seed_pool)))))
+        if inject_n >= len(base_random_grids):
+            grids = list(base_random_grids)
+        else:
+            pick_idx = np.linspace(0, len(base_random_grids) - 1, num=inject_n, dtype=int).tolist()
+            for pi in pick_idx:
+                gi = dict(base_random_grids[pi])
+                gi["mutation_type"] = "random_inject"
+                grids.append(gi)
     if seed_pool:
         template_map = {t.key: t for t in TEMPLATES}
         for seed in seed_pool:
@@ -841,7 +852,15 @@ def evolve_templates(
                 continue
             pid = str(seed.get("strategy_id", "seed"))
             grids.append({"template": t, "params": params, "origin": "mutation", "mutation_type": "elite_seed", "parent_id": pid})
-            tiers = [("minor", 8), ("medium", 8)] if mutation_only_from_seed else [("minor", 8), ("medium", 8), ("major", 4)]
+            if mutation_only_from_seed:
+                minor_n = max(3, int(6 + 4 * (1.0 - exploration_strength)))
+                medium_n = max(2, int(3 + 6 * exploration_strength))
+                major_n = int(3 * exploration_strength)
+                tiers = [("minor", minor_n), ("medium", medium_n)]
+                if major_n > 0:
+                    tiers.append(("major", major_n))
+            else:
+                tiers = [("minor", 8), ("medium", 8), ("major", 4)]
             for tier, n_mut in tiers:
                 for mp in _mutate_param_variants(key, params, rng=rng, n=n_mut + int(8 * exploration_strength)):
                     mt = tier
@@ -851,6 +870,18 @@ def evolve_templates(
                         mp = dict(_variant_param_grid(tt.key, tt.params)[int(rng.integers(0, max(1, len(_variant_param_grid(tt.key, tt.params)))) )])
                         mt = "major_logic_swap"
                     grids.append({"template": tt, "params": mp, "origin": "mutation", "mutation_type": mt, "parent_id": pid})
+            # Alternate mutation path: snap around nearby grid variants for broader local exploration.
+            grid_opts = _variant_param_grid(t.key, t.params)
+            if grid_opts:
+                snap_n = max(1, int(2 + 4 * exploration_strength))
+                snap_idx = np.linspace(0, len(grid_opts) - 1, num=min(snap_n, len(grid_opts)), dtype=int).tolist()
+                for si in snap_idx:
+                    gp = dict(grid_opts[si])
+                    merged = dict(params)
+                    for k, v in gp.items():
+                        if rng.random() < 0.5:
+                            merged[k] = v
+                    grids.append({"template": t, "params": merged, "origin": "mutation", "mutation_type": "grid_snap", "parent_id": pid})
         if len(seed_pool) >= 2:
             for _ in range(24):
                 pa = seed_pool[int(rng.integers(0, len(seed_pool)))]
