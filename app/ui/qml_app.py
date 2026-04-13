@@ -51,7 +51,7 @@ class ResourceController:
                 if self.log_cb is not None and not self._psutil_warning_emitted:
                     self.log_cb(
                         "WARN",
-                        "RAM limiter warning: psutil is not available; memory usage fallback is 0.00GB until psutil is installed.",
+                        "RAM limiter warning: process RSS unavailable (psutil missing or process init failed); memory usage fallback is 0.00GB.",
                     )
                     self._psutil_warning_emitted = True
                 return 0.0
