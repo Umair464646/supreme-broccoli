@@ -15,7 +15,7 @@ from PySide6.QtQml import QQmlApplicationEngine
 from app.core.ai_engine import analyze_market_ai
 from app.core.data_loader import load_market_file_minimal
 from app.core.feature_engine import generate_features
-from app.core.strategy_engine import evolve_templates, walk_forward_validate
+from app.core.strategy_engine import evolve_templates, walk_forward_validate, TEMPLATES
 from app.core.chart_adapter import build_candle_payload
 
 
@@ -38,6 +38,45 @@ class ResearchWorker(QObject):
     @Slot()
     def cancel(self):
         self._cancel = True
+
+    def _template_details(self, template_key: str):
+        for template in TEMPLATES:
+            if template.key == template_key:
+                return template
+        return None
+
+    def _regime_hint(self, template_key: str, indicators: list[str]) -> str:
+        key = (template_key or "").lower()
+        inds = [str(i).lower() for i in indicators]
+        if "breakout" in key or "breakout" in inds or "donchian" in inds:
+            return "breakout"
+        if "reversal" in key or "mean" in key or "rsi" in inds or "zscore" in inds:
+            return "mean-reversion"
+        return "trend-following"
+
+    def _strategy_explanation(self, template_key: str, params: dict) -> dict:
+        template = self._template_details(template_key)
+        if template is None:
+            return {
+                "indicators": "n/a",
+                "entry": "n/a",
+                "exit": "n/a",
+                "summary": "No template metadata available.",
+                "regime": "trend-following",
+            }
+        indicator_text = ", ".join([str(i) for i in template.indicators]) or "n/a"
+        entry_text = str(template.entry_logic)
+        exit_text = str(template.exit_logic)
+        param_text = ", ".join(f"{k}={v}" for k, v in sorted(dict(params).items()))
+        regime = self._regime_hint(template_key, list(template.indicators))
+        summary = f"Uses {indicator_text}. Entry: {entry_text}. Exit: {exit_text}. Params: {param_text}."
+        return {
+            "indicators": indicator_text,
+            "entry": entry_text,
+            "exit": exit_text,
+            "summary": summary,
+            "regime": regime,
+        }
 
     @Slot()
     def run(self):
@@ -93,6 +132,7 @@ class ResearchWorker(QObject):
 
                 def _emit_streamed_variant(done: int, total: int, row: dict):
                     sid = _row_to_id(row)
+                    explanation = self._strategy_explanation(str(row.get("template_key", "")), dict(row.get("params", {})))
                     payload = {
                         "id": sid,
                         "generation": gen,
@@ -104,13 +144,20 @@ class ResearchWorker(QObject):
                         "validation": "pending",
                         "status": "backtested",
                         "timeframe": "active",
-                        "entry": str(row.get("entry_logic", "deterministic rules")),
-                        "exit": str(row.get("exit_logic", "risk model")),
+                        "entry": explanation["entry"],
+                        "exit": explanation["exit"],
+                        "indicators": explanation["indicators"],
+                        "explanation": explanation["summary"],
+                        "regime": explanation["regime"],
                         "params": dict(row.get("params", {})),
                         "trade_count": int(row.get("test_trades", 0)),
                         "win_rate": round(float(row.get("test_win_rate_pct", 0.0)), 2),
                         "pnl": round(float(row.get("test_return_pct", 0.0)), 4),
                         "drawdown": round(float(row.get("test_max_drawdown_pct", 0.0)), 4),
+                        "avg_trade_return": round(float(row.get("test_avg_trade_return_pct", 0.0)), 4),
+                        "max_win": round(float(row.get("test_max_win_pct", 0.0)), 4),
+                        "max_loss": round(float(row.get("test_max_loss_pct", 0.0)), 4),
+                        "trade_distribution": f"W{int(row.get('test_win_trades', 0))}/L{int(row.get('test_loss_trades', 0))}",
                     }
                     self.strategy.emit(payload)
                     self.log.emit(
@@ -140,6 +187,7 @@ class ResearchWorker(QObject):
                 for _, row in all_variants.iterrows():
                     strategy_counter += 1
                     params = dict(row["params"])
+                    explanation = self._strategy_explanation(str(row["template_key"]), params)
                     key_sig = (str(row["template_key"]), str(sorted(params.items())))
                     sig = f"{row['template_key']}|{json.dumps(params, sort_keys=True)}"
                     payload = {
@@ -153,13 +201,20 @@ class ResearchWorker(QObject):
                         "validation": round(float(row["robustness_score"]), 4),
                         "status": "survived" if key_sig in survivors else "rejected",
                         "timeframe": "active",
-                        "entry": str(row.get("entry_logic", "deterministic rules")),
-                        "exit": str(row.get("exit_logic", "risk model")),
+                        "entry": explanation["entry"],
+                        "exit": explanation["exit"],
+                        "indicators": explanation["indicators"],
+                        "explanation": explanation["summary"],
+                        "regime": explanation["regime"],
                         "params": params,
                         "trade_count": int(row.get("test_trades", 0)),
                         "win_rate": round(float(row.get("test_win_rate_pct", 0.0)), 2),
                         "pnl": round(float(row.get("test_return_pct", 0.0)), 4),
                         "drawdown": round(float(row.get("test_max_drawdown_pct", 0.0)), 4),
+                        "avg_trade_return": round(float(row.get("test_avg_trade_return_pct", 0.0)), 4),
+                        "max_win": round(float(row.get("test_max_win_pct", 0.0)), 4),
+                        "max_loss": round(float(row.get("test_max_loss_pct", 0.0)), 4),
+                        "trade_distribution": f"W{int(row.get('test_win_trades', 0))}/L{int(row.get('test_loss_trades', 0))}",
                     }
                     self.strategy.emit(payload)
 
@@ -180,6 +235,7 @@ class ResearchWorker(QObject):
                 if self._cancel:
                     return
                 params = dict(vrow["params"])
+                explanation = self._strategy_explanation(str(vrow["template_key"]), params)
                 self.log.emit("INFO", f"validation running [{v_idx}/{len(validation_targets)}] {vrow['template_key']} params={params}")
                 v_wf, v_stability = walk_forward_validate(
                     working_df,
@@ -200,13 +256,20 @@ class ResearchWorker(QObject):
                     "validation": round(float(v_stability), 4),
                     "status": "validated",
                     "timeframe": "active",
-                    "entry": str(vrow.get("entry_logic", "deterministic rules")),
-                    "exit": str(vrow.get("exit_logic", "risk model")),
+                    "entry": explanation["entry"],
+                    "exit": explanation["exit"],
+                    "indicators": explanation["indicators"],
+                    "explanation": explanation["summary"],
+                    "regime": explanation["regime"],
                     "params": params,
                     "trade_count": int(vrow.get("test_trades", 0)),
                     "win_rate": round(float(vrow.get("test_win_rate_pct", 0.0)), 2),
                     "pnl": round(float(vrow.get("test_return_pct", 0.0)), 4),
                     "drawdown": round(float(vrow.get("test_max_drawdown_pct", 0.0)), 4),
+                    "avg_trade_return": round(float(vrow.get("test_avg_trade_return_pct", 0.0)), 4),
+                    "max_win": round(float(vrow.get("test_max_win_pct", 0.0)), 4),
+                    "max_loss": round(float(vrow.get("test_max_loss_pct", 0.0)), 4),
+                    "trade_distribution": f"W{int(vrow.get('test_win_trades', 0))}/L{int(vrow.get('test_loss_trades', 0))}",
                 })
                 self.log.emit("INFO", f"validation completed [{v_idx}/{len(validation_targets)}] stability={float(v_stability):.2f}")
                 if v_idx == 1:

@@ -731,6 +731,12 @@ def evolve_templates(
         try:
             evaluated = evaluate_template(df, t.key, params=params, config=cfg)
             test = evaluated["test"].metrics
+            test_trades = evaluated["test"].trades
+            avg_trade_return_pct = float(test_trades["return_pct"].mean()) if not test_trades.empty else 0.0
+            max_win_pct = float(test_trades["return_pct"].max()) if not test_trades.empty else 0.0
+            max_loss_pct = float(test_trades["return_pct"].min()) if not test_trades.empty else 0.0
+            wins = int((test_trades["net_pnl"] > 0).sum()) if not test_trades.empty else 0
+            losses = int((test_trades["net_pnl"] < 0).sum()) if not test_trades.empty else 0
             complexity_score = float(len(t.indicators)) * 1.8 + float(len(params)) * 0.35
             row = {
                 "strategy": t.name,
@@ -745,6 +751,11 @@ def evolve_templates(
                 "test_win_rate_pct": float(test["win_rate_pct"]),
                 "test_max_drawdown_pct": float(test["max_drawdown_pct"]),
                 "test_trades": int(test["total_trades"]),
+                "test_avg_trade_return_pct": avg_trade_return_pct,
+                "test_max_win_pct": max_win_pct,
+                "test_max_loss_pct": max_loss_pct,
+                "test_win_trades": wins,
+                "test_loss_trades": losses,
             }
             all_rows.append(row)
             if result_cb is not None:
