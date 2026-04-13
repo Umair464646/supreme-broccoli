@@ -683,6 +683,23 @@ class AppState(QObject):
         self._stage_text = stage
         self.stageTextChanged.emit()
 
+    def _compute_strategy_score(self, row: dict) -> float:
+        pnl = float(row.get("pnl", 0.0) or 0.0)
+        win_rate = float(row.get("win_rate", 0.0) or 0.0)
+        drawdown = abs(float(row.get("drawdown", 0.0) or 0.0))
+        trades = int(row.get("trade_count", 0) or 0)
+
+        # Real-score blend: reward return/win-rate/stability, penalize drawdown.
+        stability_bonus = min(1.0, trades / 40.0) * 10.0
+        return round(pnl * 1.0 + win_rate * 0.35 - drawdown * 0.75 + stability_bonus, 4)
+
+    def _resort_and_rank_strategies(self):
+        for row in self._strategies:
+            row["score"] = self._compute_strategy_score(row)
+        self._strategies.sort(key=lambda r: float(r.get("score", 0.0)), reverse=True)
+        for i, row in enumerate(self._strategies, start=1):
+            row["rank"] = i
+
     @Slot(object)
     def _on_strategy(self, payload: object):
         row = dict(payload)
@@ -698,8 +715,15 @@ class AppState(QObject):
         if not replaced:
             self._strategies.insert(0, row)
             self._strategies = self._strategies[:800]
+        self._resort_and_rank_strategies()
         self.strategiesChanged.emit()
-        if not self._selected_strategy:
+        if self._selected_strategy and row_id and str(self._selected_strategy.get("id", "")) == row_id:
+            for existing in self._strategies:
+                if str(existing.get("id", "")) == row_id:
+                    self._selected_strategy = dict(existing)
+                    self.selectedStrategyChanged.emit()
+                    break
+        elif not self._selected_strategy:
             self._selected_strategy = row
             self.selectedStrategyChanged.emit()
 

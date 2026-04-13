@@ -10,8 +10,8 @@ Rectangle {
 
     height: 86
     radius: 10
-    color: selected ? "#123052" : (hovered ? "#111C2D" : "#0E1623")
-    border.color: selected ? "#36A3FF" : "#1B2A41"
+    color: selected ? "#123052" : (row.rank <= 3 ? "#13263A" : (hovered ? "#111C2D" : "#0E1623"))
+    border.color: selected ? "#36A3FF" : (row.rank <= 3 ? "#E6B85C" : "#1B2A41")
     property bool hovered: false
 
     ColumnLayout {
@@ -21,6 +21,8 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             Label { text: row.id + " · " + row.name; color: "#E3EEFF"; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight }
+            Label { text: "#" + (row.rank || "-"); color: row.rank <= 3 ? "#FFD27A" : "#8FCBFF"; font.pixelSize: 11; font.bold: row.rank <= 3 }
+            Label { text: "Score " + (row.score || 0); color: "#CBE5FF"; font.pixelSize: 11; font.bold: true }
             Label { text: row.status; color: "#8FCBFF"; font.pixelSize: 11 }
         }
         Label { text: row.family + " | G" + row.generation + " | " + row.origin; color: "#9FB5D7"; font.pixelSize: 12 }
