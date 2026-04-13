@@ -402,6 +402,79 @@ def _robustness_score(train_metrics: dict, test_metrics: dict) -> float:
     return round(max(0.0, min(100.0, score)), 2)
 
 
+def _performance_context_analysis(test_df: pd.DataFrame, trades_df: pd.DataFrame) -> dict[str, Any]:
+    if test_df is None or test_df.empty or trades_df is None or trades_df.empty:
+        return {
+            "high_vol_avg_return": 0.0,
+            "low_vol_avg_return": 0.0,
+            "trending_avg_return": 0.0,
+            "ranging_avg_return": 0.0,
+            "performance_context": "Insufficient trades for context analysis",
+        }
+
+    local = test_df.copy()
+    local["timestamp"] = pd.to_datetime(local["timestamp"], utc=True, errors="coerce")
+    local = local.dropna(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
+    local["ret"] = local["close"].pct_change().fillna(0.0)
+    local["volatility"] = local["ret"].rolling(20).std(ddof=0).fillna(0.0)
+    ema_fast = local["close"].ewm(span=20, adjust=False).mean()
+    ema_slow = local["close"].ewm(span=50, adjust=False).mean()
+    local["trend_strength"] = ((ema_fast - ema_slow).abs() / local["close"].replace(0, pd.NA)).fillna(0.0)
+
+    vol_thr = float(local["volatility"].median())
+    trend_thr = float(local["trend_strength"].median())
+
+    trades = trades_df.copy()
+    trades["entry_time"] = pd.to_datetime(trades["entry_time"], utc=True, errors="coerce")
+    trades = trades.dropna(subset=["entry_time"]).sort_values("entry_time").reset_index(drop=True)
+    if trades.empty:
+        return {
+            "high_vol_avg_return": 0.0,
+            "low_vol_avg_return": 0.0,
+            "trending_avg_return": 0.0,
+            "ranging_avg_return": 0.0,
+            "performance_context": "Insufficient trades for context analysis",
+        }
+
+    tagged = pd.merge_asof(
+        trades,
+        local[["timestamp", "volatility", "trend_strength"]].sort_values("timestamp"),
+        left_on="entry_time",
+        right_on="timestamp",
+        direction="backward",
+    )
+    tagged["return_pct"] = pd.to_numeric(tagged["return_pct"], errors="coerce").fillna(0.0)
+    tagged["high_vol"] = tagged["volatility"] >= vol_thr
+    tagged["trending"] = tagged["trend_strength"] >= trend_thr
+
+    hv = float(tagged.loc[tagged["high_vol"], "return_pct"].mean()) if (tagged["high_vol"]).any() else 0.0
+    lv = float(tagged.loc[~tagged["high_vol"], "return_pct"].mean()) if (~tagged["high_vol"]).any() else 0.0
+    tr = float(tagged.loc[tagged["trending"], "return_pct"].mean()) if (tagged["trending"]).any() else 0.0
+    rg = float(tagged.loc[~tagged["trending"], "return_pct"].mean()) if (~tagged["trending"]).any() else 0.0
+
+    if tr - rg > 0.08:
+        base = "Performs best in trending markets"
+    elif rg - tr > 0.08:
+        base = "Performs best in ranging markets"
+    else:
+        base = "Balanced between trending and ranging periods"
+
+    if hv - lv > 0.05:
+        vol_note = "Sensitive to high volatility"
+    elif lv - hv > 0.05:
+        vol_note = "Stable in low-volatility conditions"
+    else:
+        vol_note = "Volatility sensitivity is moderate"
+
+    return {
+        "high_vol_avg_return": round(hv, 4),
+        "low_vol_avg_return": round(lv, 4),
+        "trending_avg_return": round(tr, 4),
+        "ranging_avg_return": round(rg, 4),
+        "performance_context": f"{base}; {vol_note}",
+    }
+
+
 def evaluate_template(
     df: pd.DataFrame,
     template_key: str,
@@ -432,6 +505,7 @@ def evaluate_template(
     if params:
         merged_params.update(params)
     robustness = _robustness_score(train_result.metrics, test_result.metrics)
+    perf_context = _performance_context_analysis(test_df, test_result.trades)
 
     return {
         "template": template,
@@ -440,6 +514,7 @@ def evaluate_template(
         "train": train_result,
         "test": test_result,
         "robustness_score": robustness,
+        "performance_context": perf_context,
     }
 
 
@@ -731,6 +806,7 @@ def evolve_templates(
         try:
             evaluated = evaluate_template(df, t.key, params=params, config=cfg)
             test = evaluated["test"].metrics
+            perf_context = dict(evaluated.get("performance_context", {}))
             test_trades = evaluated["test"].trades
             avg_trade_return_pct = float(test_trades["return_pct"].mean()) if not test_trades.empty else 0.0
             max_win_pct = float(test_trades["return_pct"].max()) if not test_trades.empty else 0.0
@@ -756,6 +832,11 @@ def evolve_templates(
                 "test_max_loss_pct": max_loss_pct,
                 "test_win_trades": wins,
                 "test_loss_trades": losses,
+                "ctx_high_vol_avg_return": float(perf_context.get("high_vol_avg_return", 0.0)),
+                "ctx_low_vol_avg_return": float(perf_context.get("low_vol_avg_return", 0.0)),
+                "ctx_trending_avg_return": float(perf_context.get("trending_avg_return", 0.0)),
+                "ctx_ranging_avg_return": float(perf_context.get("ranging_avg_return", 0.0)),
+                "performance_context": str(perf_context.get("performance_context", "")),
             }
             all_rows.append(row)
             if result_cb is not None:

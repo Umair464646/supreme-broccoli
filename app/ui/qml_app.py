@@ -45,16 +45,29 @@ class ResearchWorker(QObject):
                 return template
         return None
 
-    def _regime_hint(self, template_key: str, indicators: list[str]) -> str:
+    def _regime_hint(self, template_key: str, indicators: list[str], context: dict | None = None) -> str:
         key = (template_key or "").lower()
         inds = [str(i).lower() for i in indicators]
-        if "breakout" in key or "breakout" in inds or "donchian" in inds:
-            return "breakout"
-        if "reversal" in key or "mean" in key or "rsi" in inds or "zscore" in inds:
-            return "mean-reversion"
-        return "trend-following"
+        observed_tr = float((context or {}).get("ctx_trending_avg_return", 0.0) or 0.0)
+        observed_rg = float((context or {}).get("ctx_ranging_avg_return", 0.0) or 0.0)
+        observed_hv = float((context or {}).get("ctx_high_vol_avg_return", 0.0) or 0.0)
+        observed_lv = float((context or {}).get("ctx_low_vol_avg_return", 0.0) or 0.0)
 
-    def _strategy_explanation(self, template_key: str, params: dict) -> dict:
+        template_regime = "trend-following"
+        if "breakout" in key or "breakout" in inds or "donchian" in inds:
+            template_regime = "breakout"
+        elif "reversal" in key or "mean" in key or "rsi" in inds or "zscore" in inds:
+            template_regime = "mean-reversion"
+
+        if observed_tr - observed_rg > 0.08:
+            return "trend-following"
+        if observed_rg - observed_tr > 0.08:
+            return "mean-reversion"
+        if observed_hv - observed_lv > 0.06 and template_regime in {"breakout", "trend-following"}:
+            return "breakout"
+        return template_regime
+
+    def _strategy_explanation(self, template_key: str, params: dict, context: dict | None = None) -> dict:
         template = self._template_details(template_key)
         if template is None:
             return {
@@ -68,7 +81,7 @@ class ResearchWorker(QObject):
         entry_text = str(template.entry_logic)
         exit_text = str(template.exit_logic)
         param_text = ", ".join(f"{k}={v}" for k, v in sorted(dict(params).items()))
-        regime = self._regime_hint(template_key, list(template.indicators))
+        regime = self._regime_hint(template_key, list(template.indicators), context=context)
         summary = f"Uses {indicator_text}. Entry: {entry_text}. Exit: {exit_text}. Params: {param_text}."
         return {
             "indicators": indicator_text,
@@ -132,7 +145,17 @@ class ResearchWorker(QObject):
 
                 def _emit_streamed_variant(done: int, total: int, row: dict):
                     sid = _row_to_id(row)
-                    explanation = self._strategy_explanation(str(row.get("template_key", "")), dict(row.get("params", {})))
+                    context = {
+                        "ctx_high_vol_avg_return": row.get("ctx_high_vol_avg_return", 0.0),
+                        "ctx_low_vol_avg_return": row.get("ctx_low_vol_avg_return", 0.0),
+                        "ctx_trending_avg_return": row.get("ctx_trending_avg_return", 0.0),
+                        "ctx_ranging_avg_return": row.get("ctx_ranging_avg_return", 0.0),
+                    }
+                    explanation = self._strategy_explanation(
+                        str(row.get("template_key", "")),
+                        dict(row.get("params", {})),
+                        context=context,
+                    )
                     payload = {
                         "id": sid,
                         "generation": gen,
@@ -158,6 +181,11 @@ class ResearchWorker(QObject):
                         "max_win": round(float(row.get("test_max_win_pct", 0.0)), 4),
                         "max_loss": round(float(row.get("test_max_loss_pct", 0.0)), 4),
                         "trade_distribution": f"W{int(row.get('test_win_trades', 0))}/L{int(row.get('test_loss_trades', 0))}",
+                        "performance_context": str(row.get("performance_context", "")),
+                        "ctx_high_vol_avg_return": round(float(row.get("ctx_high_vol_avg_return", 0.0)), 4),
+                        "ctx_low_vol_avg_return": round(float(row.get("ctx_low_vol_avg_return", 0.0)), 4),
+                        "ctx_trending_avg_return": round(float(row.get("ctx_trending_avg_return", 0.0)), 4),
+                        "ctx_ranging_avg_return": round(float(row.get("ctx_ranging_avg_return", 0.0)), 4),
                     }
                     self.strategy.emit(payload)
                     self.log.emit(
@@ -187,7 +215,13 @@ class ResearchWorker(QObject):
                 for _, row in all_variants.iterrows():
                     strategy_counter += 1
                     params = dict(row["params"])
-                    explanation = self._strategy_explanation(str(row["template_key"]), params)
+                    context = {
+                        "ctx_high_vol_avg_return": row.get("ctx_high_vol_avg_return", 0.0),
+                        "ctx_low_vol_avg_return": row.get("ctx_low_vol_avg_return", 0.0),
+                        "ctx_trending_avg_return": row.get("ctx_trending_avg_return", 0.0),
+                        "ctx_ranging_avg_return": row.get("ctx_ranging_avg_return", 0.0),
+                    }
+                    explanation = self._strategy_explanation(str(row["template_key"]), params, context=context)
                     key_sig = (str(row["template_key"]), str(sorted(params.items())))
                     sig = f"{row['template_key']}|{json.dumps(params, sort_keys=True)}"
                     payload = {
@@ -215,6 +249,11 @@ class ResearchWorker(QObject):
                         "max_win": round(float(row.get("test_max_win_pct", 0.0)), 4),
                         "max_loss": round(float(row.get("test_max_loss_pct", 0.0)), 4),
                         "trade_distribution": f"W{int(row.get('test_win_trades', 0))}/L{int(row.get('test_loss_trades', 0))}",
+                        "performance_context": str(row.get("performance_context", "")),
+                        "ctx_high_vol_avg_return": round(float(row.get("ctx_high_vol_avg_return", 0.0)), 4),
+                        "ctx_low_vol_avg_return": round(float(row.get("ctx_low_vol_avg_return", 0.0)), 4),
+                        "ctx_trending_avg_return": round(float(row.get("ctx_trending_avg_return", 0.0)), 4),
+                        "ctx_ranging_avg_return": round(float(row.get("ctx_ranging_avg_return", 0.0)), 4),
                     }
                     self.strategy.emit(payload)
 
@@ -235,7 +274,13 @@ class ResearchWorker(QObject):
                 if self._cancel:
                     return
                 params = dict(vrow["params"])
-                explanation = self._strategy_explanation(str(vrow["template_key"]), params)
+                context = {
+                    "ctx_high_vol_avg_return": vrow.get("ctx_high_vol_avg_return", 0.0),
+                    "ctx_low_vol_avg_return": vrow.get("ctx_low_vol_avg_return", 0.0),
+                    "ctx_trending_avg_return": vrow.get("ctx_trending_avg_return", 0.0),
+                    "ctx_ranging_avg_return": vrow.get("ctx_ranging_avg_return", 0.0),
+                }
+                explanation = self._strategy_explanation(str(vrow["template_key"]), params, context=context)
                 self.log.emit("INFO", f"validation running [{v_idx}/{len(validation_targets)}] {vrow['template_key']} params={params}")
                 v_wf, v_stability = walk_forward_validate(
                     working_df,
@@ -270,6 +315,11 @@ class ResearchWorker(QObject):
                     "max_win": round(float(vrow.get("test_max_win_pct", 0.0)), 4),
                     "max_loss": round(float(vrow.get("test_max_loss_pct", 0.0)), 4),
                     "trade_distribution": f"W{int(vrow.get('test_win_trades', 0))}/L{int(vrow.get('test_loss_trades', 0))}",
+                    "performance_context": str(vrow.get("performance_context", "")),
+                    "ctx_high_vol_avg_return": round(float(vrow.get("ctx_high_vol_avg_return", 0.0)), 4),
+                    "ctx_low_vol_avg_return": round(float(vrow.get("ctx_low_vol_avg_return", 0.0)), 4),
+                    "ctx_trending_avg_return": round(float(vrow.get("ctx_trending_avg_return", 0.0)), 4),
+                    "ctx_ranging_avg_return": round(float(vrow.get("ctx_ranging_avg_return", 0.0)), 4),
                 })
                 self.log.emit("INFO", f"validation completed [{v_idx}/{len(validation_targets)}] stability={float(v_stability):.2f}")
                 if v_idx == 1:

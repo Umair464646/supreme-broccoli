@@ -8,7 +8,7 @@ Rectangle {
     property bool selected: false
     signal clicked()
 
-    height: 124
+    height: 138
     radius: 10
     color: selected ? "#123052" : (row.rank <= 3 ? "#13263A" : (hovered ? "#111C2D" : "#0E1623"))
     border.color: selected ? "#36A3FF" : (row.rank <= 3 ? "#E6B85C" : "#1B2A41")
@@ -50,6 +50,15 @@ Rectangle {
             font.pixelSize: 10
             wrapMode: Text.Wrap
             maximumLineCount: 2
+            elide: Text.ElideRight
+            Layout.fillWidth: true
+        }
+        Label {
+            text: row.performance_context || ""
+            color: "#89C7BE"
+            font.pixelSize: 10
+            wrapMode: Text.Wrap
+            maximumLineCount: 1
             elide: Text.ElideRight
             Layout.fillWidth: true
         }
